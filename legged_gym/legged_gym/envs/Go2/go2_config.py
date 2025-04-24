@@ -84,15 +84,18 @@ class GO2RoughCfg( LeggedRobotCfg ):
     class commands:
         curriculum = True
         max_curriculum = 1.7
-        num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        num_commands = 4 + 3 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error), base_height, jump_signal
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
         pacing_offset = False
+        height_command = True # if true: compute height command from base height
+
         class ranges:
             lin_vel_x = [-1.2, 1.2] # min max [m/s]
             lin_vel_y = [-0.7, 0.7]   # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
             heading = [-3.14, 3.14]
+            height = [0.1, 0.3]
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.42] # x,y,z [m]
@@ -129,7 +132,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         name = "go2"
         foot_name = "foot"
         penalize_contacts_on =["thigh", "calf"]
-        terminate_after_contacts_on = []
+        terminate_after_contacts_on = ["base"]
         self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
         # flip_visual_attachments = False
         fix_base_link = False
@@ -232,6 +235,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
             orientation = -0.2
             dof_acc = -2.5e-7
             base_height = -1.0
+            # base_height_command = 1.0
+            # base_height_enhance = 1.0
             collision = -1
             feet_stumble = -0.2
             action_rate = -0.01

@@ -158,7 +158,7 @@ class LeggedRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.reset_buf = self.projected_gravity[:, 2] > -0.5
+        self.reset_buf = self.projected_gravity[:, 2] > -0.2
         # print(self.projected_gravity)
         # self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
@@ -548,6 +548,10 @@ class LeggedRobot(BaseTask):
         # else:
         #     self.commands[env_ids, 0] = torch.zeros((len(env_ids), 1), device=self.device).squeeze(1)
         #     self.commands[env_ids, 1] = torch.zeros((len(env_ids), 1), device=self.device).squeeze(1)
+
+        if self.cfg.commands.height_command:
+            self.commands[env_ids, 4] = torch_rand_float(self.command_ranges["height"][0], self.command_ranges["height"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+
 
     def _step_contact_targets(self):
         if self.cfg.env.observe_gait_commands:
@@ -1633,4 +1637,15 @@ class LeggedRobot(BaseTask):
         # Sign mismatch has the highest priority
         reward[sign_mismatch] = -2.0
         return reward * (self.commands[:, 0].abs() > 0.1)
+    
+    def _reward_base_height_command(self):
+        # Penalize base height away from target
+        # print(self.commands[0, 2], self.base_height[0])
+        self.base_height = self._get_base_heights()
+        base_height_error = torch.square(self.base_height - self.commands[:, 4])
+        return torch.exp(-base_height_error / 0.001)
 
+    def _reward_base_height_enhance(self):
+        self.base_height = self._get_base_heights()
+        base_height_error = torch.square(self.base_height - self.commands[:, 4])
+        return torch.exp(-base_height_error / 0.001 / 10) - 1

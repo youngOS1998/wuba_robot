@@ -48,7 +48,7 @@ import time
 def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
 
     # logging 
-    log_name = '/home/bxi02/Project/waq_baseline/legged_gym/legged_gym/scripts/sim_logs/sim_isaac.log'
+    log_name = '/home/byang/Project_byang/wuba_robot/legged_gym/legged_gym/scripts/sim_logs/sim_isaac.log'
     if os.path.exists(log_name):
         os.remove(log_name)
 
