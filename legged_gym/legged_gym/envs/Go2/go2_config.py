@@ -33,8 +33,8 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 class GO2RoughCfg( LeggedRobotCfg ):
     class env:
         num_envs = 4096
-        num_observations = 49
-        num_privileged_obs = 256 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
+        num_observations = 49 + 3
+        num_privileged_obs = 256  # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
@@ -75,7 +75,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         num_rows= 10 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
-        terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
+        # terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]   # good walking
+        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]   # crawl walking
         # terrain_proportions = [0.1, 0.0, 0.1, 0.1, 0.1, 0, 0, 0, 0.6]
         #terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
@@ -234,9 +235,9 @@ class GO2RoughCfg( LeggedRobotCfg ):
             ang_vel_xy = -0.1
             orientation = -0.2
             dof_acc = -2.5e-7
-            base_height = -1.0
-            # base_height_command = 1.0
-            # base_height_enhance = 1.0
+            # base_height = -1.0
+            base_height_command = 1.0
+            base_height_enhance = 1.0
             collision = -1
             feet_stumble = -0.2
             action_rate = -0.01

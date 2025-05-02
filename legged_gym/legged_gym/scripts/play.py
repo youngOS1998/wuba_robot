@@ -89,6 +89,7 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.x_command = 1.0
     env_cfg.y_command = 0.0
     env_cfg.yaw_command = 0.0
+    env_cfg.height_command = 0.1
     
     # env_cfg.sim_params = "cuda:0"
 

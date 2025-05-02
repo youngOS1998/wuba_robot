@@ -146,6 +146,8 @@ class Terrain:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.)
         elif choice < self.proportions[8]:
             box_down_terrain(terrain, height=box_height, platform_size=4.)
+        elif choice < self.proportions[9]:
+            terrain_utils.random_uniform_terrain(terrain, min_height=-0.03, max_height=0.03, step=0.005, downsampled_scale=0.2)
         
         return terrain
 

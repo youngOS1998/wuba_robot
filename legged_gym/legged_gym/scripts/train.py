@@ -83,14 +83,15 @@ def train(args):
 
 if __name__ == '__main__':
     args = get_args()
-    print("显卡监控已启动，正在检测显卡状态...")
+    # print("显卡监控已启动，正在检测显卡状态...")
     
     while True:
-        gpu_id = check_gpu_status()
-        if gpu_id is not None:
-            print(f"\n检测到显卡 {gpu_id} 空闲，开始训练！")
-            train(args)
-            break
-        else:
-            print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - 无空闲显卡，继续检测...")
-        time.sleep(CHECK_INTERVAL)
+        train(args)
+        # gpu_id = check_gpu_status()
+        # if gpu_id is not None:
+        #     print(f"\n检测到显卡 {gpu_id} 空闲，开始训练！")
+        #     train(args)
+        #     break
+        # else:
+        #     print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - 无空闲显卡，继续检测...")
+        # time.sleep(CHECK_INTERVAL)

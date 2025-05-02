@@ -277,6 +277,7 @@ class LeggedRobot(BaseTask):
                                     self.clock_inputs,
                                     self.projected_gravity,  # [3:6]
                                     self.commands[:, :3] * self.commands_scale,  # [6:9]
+                                    self.commands[:, 4:7],  # [9:11]
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,  # [9:21]
                                     self.dof_vel * self.obs_scales.dof_vel,  # [21:33]
                                     self.actions
@@ -495,6 +496,7 @@ class LeggedRobot(BaseTask):
             self.commands[:, 0] = self.cfg.x_command
             self.commands[:, 1] = self.cfg.y_command
             self.commands[:, 2] = self.cfg.yaw_command
+            self.commands[:, 4] = self.cfg.height_command
         
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
