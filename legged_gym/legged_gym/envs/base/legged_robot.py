@@ -158,11 +158,23 @@ class LeggedRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.reset_buf = self.projected_gravity[:, 2] > -0.2
-        # print(self.projected_gravity)
-        # self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
-        self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        self.reset_buf |= self.time_out_buf
+        # 检查是否翻倒
+        is_upside_down = self.projected_gravity[:, 2] > self.upside_down_angle_threshold
+        
+        # 更新翻倒状态持续时间
+        self.upside_down_time[is_upside_down] += self.dt
+        self.upside_down_time[~is_upside_down] = 0.0
+        
+        # 检查是否翻倒时间超过阈值
+        upside_down_timeout = self.upside_down_time > self.upside_down_threshold
+        
+        # 原有的终止条件
+        contact_termination = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        time_out = self.episode_length_buf > self.max_episode_length
+        
+        # 合并所有终止条件
+        self.reset_buf = contact_termination | time_out | upside_down_timeout
+        self.time_out_buf = time_out
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -711,8 +723,52 @@ class LeggedRobot(BaseTask):
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
-        # base velocities
-        self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
+            
+        # 根据play_mode决定是否使用随机姿态
+        if hasattr(self.cfg, 'play_mode') and self.cfg.play_mode:
+            # play模式：使用固定姿态
+            self.root_states[env_ids, 2] += 0.0  # 设置固定高度偏移
+            
+            # 设置固定的姿态（四元数）
+            roll = 1.7 * torch.ones((len(env_ids), 1), device=self.device)  # 0度
+            pitch = 0.0 * torch.ones((len(env_ids), 1), device=self.device)  # 0度
+            yaw = 0.0 *torch.ones((len(env_ids), 1), device=self.device)  # 0度
+            
+            # 设置初始速度为0
+            self.root_states[env_ids, 7:10] = torch.zeros((len(env_ids), 3), device=self.device) # 线速度
+            self.root_states[env_ids, 10:13] = torch.zeros((len(env_ids), 3), device=self.device) # 角速度
+        else:
+            # 训练模式：使用随机姿态
+            self.root_states[env_ids, 2] += torch_rand_float(-0.1, 0.1, (len(env_ids), 1), device=self.device).squeeze(1)
+            
+            # 随机化姿态（四元数）
+            roll = torch_rand_float(-np.pi, np.pi, (len(env_ids), 1), device=self.device)  # 允许完全翻转
+            pitch = torch_rand_float(-np.pi, np.pi, (len(env_ids), 1), device=self.device)  # 允许完全翻转
+            yaw = torch_rand_float(-np.pi, np.pi, (len(env_ids), 1), device=self.device)  # 360度随机
+            
+            # 随机化线速度和角速度
+            self.root_states[env_ids, 7:10] = torch_rand_float(-0.5, 0.5, (len(env_ids), 3), device=self.device) # 线速度
+            self.root_states[env_ids, 10:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 3), device=self.device) # 角速度
+        
+        # 将欧拉角转换为四元数
+        cy = torch.cos(yaw * 0.5)
+        sy = torch.sin(yaw * 0.5)
+        cp = torch.cos(pitch * 0.5)
+        sp = torch.sin(pitch * 0.5)
+        cr = torch.cos(roll * 0.5)
+        sr = torch.sin(roll * 0.5)
+        
+        qw = cy * cp * cr + sy * sp * sr
+        qx = cy * cp * sr - sy * sp * cr
+        qy = sy * cp * sr + cy * sp * cr
+        qz = sy * cp * cr - cy * sp * sr
+        
+        # 设置四元数
+        self.root_states[env_ids, 3] = qx.squeeze(1)
+        self.root_states[env_ids, 4] = qy.squeeze(1)
+        self.root_states[env_ids, 5] = qz.squeeze(1)
+        self.root_states[env_ids, 6] = qw.squeeze(1)
+        
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),
@@ -814,8 +870,13 @@ class LeggedRobot(BaseTask):
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
 
+        # 添加翻倒状态持续时间缓冲区
+        self.upside_down_time = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device, requires_grad=False)
+        self.upside_down_threshold = 3.0  # 翻倒状态持续2秒后重置
+        self.upside_down_angle_threshold = 0.4  # 当重力投影在z轴的分量小于0.5时认为翻倒
+
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
-        self.foot_positions = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices,0:3]
+        self.foot_positions = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices, 0:3]
         self.foot_velocities = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:,self.feet_indices,7:10]
         self.prev_foot_velocities = self.foot_velocities.clone()
 
@@ -1053,7 +1114,7 @@ class LeggedRobot(BaseTask):
         self.actor_handles = []
         self.envs = []
         for i in range(self.num_envs):
-            # create env instance
+            # create env instance   
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
             pos = self.env_origins[i].clone()
             pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1)
@@ -1086,6 +1147,19 @@ class LeggedRobot(BaseTask):
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
+
+        # 保存thigh和calf的索引
+        thigh_names = [s for s in body_names if "thigh" in s]
+        calf_names = [s for s in body_names if "calf" in s]
+        
+        self.thigh_indices = torch.zeros(len(thigh_names), dtype=torch.long, device=self.device, requires_grad=False)
+        self.calf_indices = torch.zeros(len(calf_names), dtype=torch.long, device=self.device, requires_grad=False)
+        
+        for i in range(len(thigh_names)):
+            self.thigh_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], thigh_names[i])
+        
+        for i in range(len(calf_names)):
+            self.calf_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], calf_names[i])
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
@@ -1435,8 +1509,21 @@ class LeggedRobot(BaseTask):
         return torch.sum(torch.square(self.dof_vel), dim=1)
     
     def _reward_collision(self):
-        # Penalize collisions on selected bodies
-        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+        # 检查是否处于翻倒状态
+        is_upside_down = self.projected_gravity[:, 2] > self.upside_down_angle_threshold
+        
+        # 获取所有接触力
+        contact_forces = torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1)
+        
+        # 创建惩罚掩码，在翻倒状态下不惩罚thigh和calf的接触
+        penalty_mask = torch.ones_like(contact_forces, dtype=torch.bool)
+        if hasattr(self, 'thigh_indices') and hasattr(self, 'calf_indices'):
+            # 在翻倒状态下，将thigh和calf的接触惩罚设为0
+            penalty_mask[is_upside_down] = False
+        
+        # 应用惩罚掩码
+        penalized_contacts = contact_forces * penalty_mask
+        return torch.sum(1.*(penalized_contacts > 0.1), dim=1)
     
     def _reward_termination(self):
         # Terminal reward / penalty
@@ -1651,3 +1738,7 @@ class LeggedRobot(BaseTask):
         self.base_height = self._get_base_heights()
         base_height_error = torch.square(self.base_height - self.commands[:, 4])
         return torch.exp(-base_height_error / 0.001 / 10) - 1
+
+    def _reward_recovery(self):
+        rew = 1 - self.projected_gravity[:, 2]
+        return rew

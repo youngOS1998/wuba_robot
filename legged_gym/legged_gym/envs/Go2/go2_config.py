@@ -38,7 +38,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         num_actions = 12
         env_spacing = 3.  # not used with heightfields/trimeshes 
         send_timeouts = True # send time out information to the algorithm
-        episode_length_s = 20 # episode length in seconds
+        episode_length_s = 6 # episode length in seconds
 
         # add
         num_observation_history = 10
@@ -132,8 +132,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf'
         name = "go2"
         foot_name = "foot"
-        penalize_contacts_on =["thigh", "calf"]
-        terminate_after_contacts_on = ["base"]
+        penalize_contacts_on = ["thigh", "calf"]
+        terminate_after_contacts_on = []
         self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
         # flip_visual_attachments = False
         fix_base_link = False
@@ -161,7 +161,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         added_mass_range = [-2.0, 2.0]
         # push robot
         push_robots = True
-        push_interval_s = 10
+        push_interval_s = 10  # 10
         max_push_vel_xy = 1.5
         # com displacement
         randomize_com_displacement = True
@@ -229,43 +229,44 @@ class GO2RoughCfg( LeggedRobotCfg ):
         base_height_target = 0.3
         class scales( LeggedRobotCfg.rewards.scales ):
             termination = -0.0
-            tracking_lin_vel = 1.2
-            tracking_ang_vel = 0.6
-            lin_vel_z = -2.0
-            ang_vel_xy = -0.1
-            orientation = -0.2
+            tracking_lin_vel = 0.8
+            tracking_ang_vel = 0.4
+            lin_vel_z = -1.0
+            ang_vel_xy = -0.05
+            orientation = -0.1
             dof_acc = -2.5e-7
-            # base_height = -1.0
-            base_height_command = 1.0
-            base_height_enhance = 1.0
-            collision = -1
-            feet_stumble = -0.2
-            action_rate = -0.01
+            # base_height_command = 2.0
+            # base_height_enhance = 2.0
+            base_height = -1.0
+            collision = -0.5
+            feet_stumble = -0.1
+            action_rate = -0.005
             torques_rate = -1.0e-7
-            dof_pos_limits = -5.0
-            dof_vel_limits = -5.0
+            dof_pos_limits = -2.0
+            dof_vel_limits = -2.0
 
-            joint_power = -2e-5
-            default_pos = -1e-1
+            joint_power = -1e-5
+            default_pos = -0.05
             power_distribution = -1e-7
-            smoothness= -0.02
+            smoothness = -0.01
             torques = -1.0e-7
-            feet_slip = -0.01
-            feet_impact_vel = -0.2
-            low_speed = 0.2
+            feet_slip = -0.005
+            feet_impact_vel = -0.1
+            low_speed = 0.1
 
-            contacts_shaped_force = 0.01
-            contacts_shaped_vel = 0.01
-            feet_clearance_cmd_linear = -1.0
+            contacts_shaped_force = 0.02
+            contacts_shaped_vel = 0.02
+            feet_clearance_cmd_linear = -0.5
+            recovery = 1.0
 
-        only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
-        tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
-        soft_dof_pos_limit = 0.9 # percentage of urdf limits, values above this limit are penalized
-        soft_dof_vel_limit = 1.
-        soft_torque_limit = 1.
-        base_height_target = 0.30 # x20: 1.0   go1: 0.4 
-        desired_feet_height = 0.10 #0.1: x20 #0.07: go1
-        max_contact_force = 400. # forces above this value are penalized
+        only_positive_rewards = False
+        tracking_sigma = 0.5
+        soft_dof_pos_limit = 0.95
+        soft_dof_vel_limit = 1.2
+        soft_torque_limit = 1.2
+        base_height_target = 0.30
+        desired_feet_height = 0.10
+        max_contact_force = 600.
         clearance_height_target = -0.30
 
 class GO2RoughCfgPPO( LeggedRobotCfgPPO ):

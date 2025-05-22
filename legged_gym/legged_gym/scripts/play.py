@@ -69,7 +69,7 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     with open('train_cfg.pkl', 'wb') as f:
         pickle.dump(train_cfg, f)
     # override some parameters for testing
-    env_cfg.terrain.border_size = 10
+    env_cfg.terrain.border_size = 0
     env_cfg.env.num_envs = 1
     env_cfg.terrain.num_rows = 1
     env_cfg.terrain.num_cols = 1
@@ -78,7 +78,9 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.terrain.center_robots = True
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
-    env_cfg.domain_rand.push_robots = False
+    env_cfg.domain_rand.push_robots = True
+    env_cfg.domain_rand.push_interval_s = 2
+    env_cfg.domain_rand.max_push_vel_xy = 2.5
     env_cfg.test = True
     env_cfg.terrain.selected = False
     env_cfg.terrain.terrain_kwargs = \
@@ -89,7 +91,9 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.x_command = 1.0
     env_cfg.y_command = 0.0
     env_cfg.yaw_command = 0.0
-    env_cfg.height_command = 0.1
+    env_cfg.height_command = 0.3
+    
+    env_cfg.play_mode = True
     
     # env_cfg.sim_params = "cuda:0"
 

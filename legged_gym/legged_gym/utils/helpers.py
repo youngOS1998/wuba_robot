@@ -125,6 +125,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1):
 
     load_path = '/home/byang/Project_byang/wuba_robot/legged_gym/logs/rough_go2/Apr22_19-05-43_good_walking/model_20000.pt'
     load_path = '/home/byang/Project_byang/wuba_robot/legged_gym/logs/rough_go2/Apr26_11-26-34_/model_10000.pt'
+    load_path = '/home/byang/Project_byang/wuba_robot/legged_gym/logs/rough_go2/May21_13-59-45_/model_4000.pt'
     return load_path
 
 def update_cfg_from_args(env_cfg, cfg_train, args):
