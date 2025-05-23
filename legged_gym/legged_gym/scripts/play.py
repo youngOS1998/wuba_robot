@@ -82,6 +82,7 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.domain_rand.push_interval_s = 2
     env_cfg.domain_rand.max_push_vel_xy = 2.5
     env_cfg.test = True
+    env_cfg.commands.camera_follow = True
     env_cfg.terrain.selected = False
     env_cfg.terrain.terrain_kwargs = \
     {'type':"room_terrain",

@@ -89,6 +89,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
         pacing_offset = False
+        camera_follow = False
         height_command = True # if true: compute height command from base height
 
         class ranges:

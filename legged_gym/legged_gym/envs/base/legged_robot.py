@@ -107,6 +107,9 @@ class LeggedRobot(BaseTask):
             self.gym.refresh_dof_state_tensor(self.sim)
         self.post_physics_step()
 
+        if self.cfg.commands.camera_follow:
+            self.update_camera_follow()
+
         # return clipped obs, clipped states (None), rewards, dones and infos
         clip_obs = self.cfg.normalization.clip_observations
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
@@ -114,6 +117,32 @@ class LeggedRobot(BaseTask):
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.obs_no_noise_buf, self.privileged_obs_buf, self.rew_constant, self.rew_increase, self.reset_buf, self.extras
+
+    def update_camera_follow(self):
+        """动态更新相机位置"""
+        if self.root_states is None:
+            return
+            
+        # 相机相对位置参数
+        horizontal_offset = 3.0  # 水平方向距离
+        vertical_offset = 2.5   # 垂直方向高度
+        camera_angle = 15.0     # 俯视角度(度)
+        
+        # 计算相机位置
+        cam_x = self.root_states[:, 0]
+        cam_y = self.root_states[:, 1] - horizontal_offset
+        cam_z = self.root_states[:, 2] + vertical_offset
+        
+        # 设置观察目标点为机器人当前位置
+        lookat = [self.root_states[:, 0], self.root_states[:, 1], self.root_states[:, 2]]
+        
+        # 转换为gymapi坐标
+        cam_pos = gymapi.Vec3(cam_x, cam_y, cam_z)
+        cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
+        
+        # 更新相机视角
+        self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
