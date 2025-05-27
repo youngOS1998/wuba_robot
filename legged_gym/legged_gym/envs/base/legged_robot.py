@@ -759,8 +759,8 @@ class LeggedRobot(BaseTask):
             self.root_states[env_ids, 2] += 0.0  # 设置固定高度偏移
             
             # 设置固定的姿态（四元数）
-            roll = 1.7 * torch.ones((len(env_ids), 1), device=self.device)  # 0度
-            pitch = 0.0 * torch.ones((len(env_ids), 1), device=self.device)  # 0度
+            roll = 0.0 * torch.ones((len(env_ids), 1), device=self.device)  # 0度
+            pitch = -1.7 * torch.ones((len(env_ids), 1), device=self.device)  # 0度
             yaw = 0.0 *torch.ones((len(env_ids), 1), device=self.device)  # 0度
             
             # 设置初始速度为0
@@ -793,10 +793,10 @@ class LeggedRobot(BaseTask):
         qz = sy * cp * cr - cy * sp * sr
         
         # 设置四元数
-        self.root_states[env_ids, 3] = qx.squeeze(1)
-        self.root_states[env_ids, 4] = qy.squeeze(1)
-        self.root_states[env_ids, 5] = qz.squeeze(1)
-        self.root_states[env_ids, 6] = qw.squeeze(1)
+        # self.root_states[env_ids, 3] = qx.squeeze(1)
+        # self.root_states[env_ids, 4] = qy.squeeze(1)
+        # self.root_states[env_ids, 5] = qz.squeeze(1)
+        # self.root_states[env_ids, 6] = qw.squeeze(1)
         
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
@@ -902,7 +902,7 @@ class LeggedRobot(BaseTask):
         # 添加翻倒状态持续时间缓冲区
         self.upside_down_time = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device, requires_grad=False)
         self.upside_down_threshold = 3.0  # 翻倒状态持续2秒后重置
-        self.upside_down_angle_threshold = 0.4  # 当重力投影在z轴的分量小于0.5时认为翻倒
+        self.upside_down_angle_threshold = -0.6  # 当重力投影在z轴的分量小于0.5时认为翻倒
 
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
         self.foot_positions = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices, 0:3]
@@ -1539,6 +1539,7 @@ class LeggedRobot(BaseTask):
     
     def _reward_collision(self):
         # 检查是否处于翻倒状态
+        
         is_upside_down = self.projected_gravity[:, 2] > self.upside_down_angle_threshold
         
         # 获取所有接触力

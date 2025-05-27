@@ -72,11 +72,11 @@ class GO2RoughCfg( LeggedRobotCfg ):
         max_init_terrain_level = 5 # starting curriculum state
         terrain_length = 8.
         terrain_width = 8.
-        num_rows= 10 # number of terrain rows (levels)
+        num_rows= 20 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         # terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]   # good walking
-        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]   # crawl walking
+        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]   # crawl walking
         # terrain_proportions = [0.1, 0.0, 0.1, 0.1, 0.1, 0, 0, 0, 0.6]
         #terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
@@ -133,8 +133,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf'
         name = "go2"
         foot_name = "foot"
-        penalize_contacts_on = ["thigh", "calf"]
-        terminate_after_contacts_on = []
+        penalize_contacts_on = []
+        terminate_after_contacts_on = ["base"]
         self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
         # flip_visual_attachments = False
         fix_base_link = False
@@ -258,7 +258,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
             contacts_shaped_force = 0.02
             contacts_shaped_vel = 0.02
             feet_clearance_cmd_linear = -0.5
-            recovery = 1.0
+            recovery = 0.1
 
         only_positive_rewards = False
         tracking_sigma = 0.5

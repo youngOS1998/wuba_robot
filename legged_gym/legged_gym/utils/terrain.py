@@ -120,7 +120,8 @@ class Terrain:
         stone_distance = 0.05 if difficulty==0 else 0.1
         gap_size = 1. * difficulty
         pit_depth = 1. * difficulty
-        box_height = 1. * difficulty
+        box_down_height = 1. * difficulty
+        box_up_height = -0.8 * difficulty
         if choice < self.proportions[0]:
             if choice < self.proportions[0]/ 2:
                 slope *= -1
@@ -145,10 +146,11 @@ class Terrain:
         elif choice < self.proportions[7]:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.)
         elif choice < self.proportions[8]:
-            box_down_terrain(terrain, height=box_height, platform_size=4.)
+            box_up_terrain(terrain, height=box_up_height, platform_size=3.)
         elif choice < self.proportions[9]:
             terrain_utils.random_uniform_terrain(terrain, min_height=-0.03, max_height=0.03, step=0.005, downsampled_scale=0.2)
-        
+        elif choice < self.proportions[10]:
+            box_down_terrain(terrain, height=box_down_height, platform_size=3.)
         return terrain
 
     def add_terrain_to_map(self, terrain, row, col):
@@ -202,3 +204,11 @@ def box_down_terrain(terrain, height, platform_size=1.):
     y2 = terrain.width // 2 + platform_size
     terrain.height_field_raw[x1:x2, y1:y2] = height
 
+def box_up_terrain(terrain, height, platform_size=1.):
+    height = int(height / terrain.vertical_scale)
+    platform_size = int(platform_size / terrain.horizontal_scale / 2)
+    x1 = terrain.length // 2 - platform_size
+    x2 = terrain.length // 2 + platform_size
+    y1 = terrain.width // 2 - platform_size
+    y2 = terrain.width // 2 + platform_size
+    terrain.height_field_raw[x1:x2, y1:y2] = height
