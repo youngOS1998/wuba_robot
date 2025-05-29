@@ -76,7 +76,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         # terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]   # good walking
-        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]   # crawl walking
+        # terrain_proportions = [0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.0, 0.0, 0.1, 0.1, 0.1]   # crawl walking
+        terrain_proportions = [0., 0., 0., 0., 0., 0., 0.0, 0.0, 1., 0., 0.]
         # terrain_proportions = [0.1, 0.0, 0.1, 0.1, 0.1, 0, 0, 0, 0.6]
         #terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0]
         # trimesh only:
@@ -236,9 +237,9 @@ class GO2RoughCfg( LeggedRobotCfg ):
             ang_vel_xy = -0.05
             orientation = -0.1
             dof_acc = -2.5e-7
-            # base_height_command = 2.0
-            # base_height_enhance = 2.0
-            base_height = -1.0
+            base_height_command = 2.0
+            base_height_enhance = 2.0
+            # base_height = -1.0
             collision = -0.5
             feet_stumble = -0.1
             action_rate = -0.005
