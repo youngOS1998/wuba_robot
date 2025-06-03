@@ -35,11 +35,14 @@ import torch.nn.functional as F
 
 from rsl_rl.modules import ActorCritic
 from rsl_rl.storage import RolloutStorage
+from typing import Dict, List, Tuple
+from legged_gym.skills.ewc import EWC
 
 class PPO:
     actor_critic: ActorCritic
     def __init__(self,
                  actor_critic,
+                 ewc_lambda: float = 0.4, 
                  num_learning_epochs=1,
                  num_mini_batches=1,
                  clip_param=0.2,
@@ -83,6 +86,7 @@ class PPO:
 
         self.num_vae_module_substeps = num_vae_module_substeps
         self.beta=beta
+        self.ewc = EWC(actor_critic, actor_critic.device, ewc_lambda)
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, obs_history_shape, action_shape):
         self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, obs_history_shape, action_shape, self.device)

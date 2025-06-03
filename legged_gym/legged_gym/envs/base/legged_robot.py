@@ -188,6 +188,7 @@ class LeggedRobot(BaseTask):
         """ Check if environments need to be reset
         """
         # 检查是否翻倒
+        # print(self.projected_gravity[:, 2])
         is_upside_down = self.projected_gravity[:, 2] > self.upside_down_angle_threshold
         
         # 更新翻倒状态持续时间
@@ -199,10 +200,13 @@ class LeggedRobot(BaseTask):
         
         # 原有的终止条件
         contact_termination = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        contact_termination_2 = contact_termination & (~is_upside_down)
+
         time_out = self.episode_length_buf > self.max_episode_length
+
         
         # 合并所有终止条件
-        self.reset_buf = contact_termination | time_out | upside_down_timeout
+        self.reset_buf = contact_termination_2 | time_out | upside_down_timeout
         self.time_out_buf = time_out
 
     def reset_idx(self, env_ids):
@@ -244,6 +248,8 @@ class LeggedRobot(BaseTask):
         self.stance_time[env_ids] = 0.
         self.reset_buf[env_ids] = 1
         self.gait_indices[env_ids] = 0
+        # 重置翻倒时间
+        self.upside_down_time[env_ids] = 0.
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
@@ -793,10 +799,10 @@ class LeggedRobot(BaseTask):
         qz = sy * cp * cr - cy * sp * sr
         
         # 设置四元数
-        # self.root_states[env_ids, 3] = qx.squeeze(1)
-        # self.root_states[env_ids, 4] = qy.squeeze(1)
-        # self.root_states[env_ids, 5] = qz.squeeze(1)
-        # self.root_states[env_ids, 6] = qw.squeeze(1)
+        self.root_states[env_ids, 3] = qx.squeeze(1)
+        self.root_states[env_ids, 4] = qy.squeeze(1)
+        self.root_states[env_ids, 5] = qz.squeeze(1)
+        self.root_states[env_ids, 6] = qw.squeeze(1)
         
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
@@ -902,7 +908,7 @@ class LeggedRobot(BaseTask):
         # 添加翻倒状态持续时间缓冲区
         self.upside_down_time = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device, requires_grad=False)
         self.upside_down_threshold = 3.0  # 翻倒状态持续2秒后重置
-        self.upside_down_angle_threshold = -0.6  # 当重力投影在z轴的分量小于0.5时认为翻倒
+        self.upside_down_angle_threshold = -0.7  # 当重力投影在z轴的分量小于0.5时认为翻倒
 
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
         self.foot_positions = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices, 0:3]
