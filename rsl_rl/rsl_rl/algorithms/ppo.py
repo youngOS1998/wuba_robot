@@ -219,7 +219,6 @@ class PPO:
                 mean_body_h_loss += body_h_loss.item()
                 mean_feet_h_loss += feet_h_loss.item()
                 mean_recons_loss += recons_loss.item()
-                mean_kld_loss += kl_mean.item()
                 mean_vq_loss += vq_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches

@@ -255,7 +255,7 @@ class ActorCritic(nn.Module):
         
         # eps = torch.normal(mean=torch.zeros_like(vae_vel, dtype=torch.float32), std=torch.ones_like(vae_vel, dtype=torch.float32)).to(vae_vel.device)
         # noised_vel = vae_vel + (eps * vae_vel.std(0)).detach()
-        mean = self.actor(torch.cat([vel.detach(), body_h.detach(), feet_h.detach(), quantized_z.detach(), observations], dim=-1))
+        mean = self.actor(torch.cat([vel.detach(), body_h.detach(), feet_h.detach(), quantized_z, observations], dim=-1))
         
         # mean = self.actor(torch.cat([vae_vel, latent, observations], dim=-1))
         
