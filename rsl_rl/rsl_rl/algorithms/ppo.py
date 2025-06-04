@@ -198,6 +198,7 @@ class PPO:
                 body_vel_loss = F.mse_loss(vae_vel, base_lin_vel_batch)
                 recons_loss = F.mse_loss(recons, next_obs_batch)
                 vae_loss = body_vel_loss + recons_loss + body_h_loss + feet_h_loss + vq_loss
+                # vae_loss = recons_loss + vq_loss
 
                 total_loss = vae_loss + surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 

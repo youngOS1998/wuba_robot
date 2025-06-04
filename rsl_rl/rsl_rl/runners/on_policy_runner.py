@@ -224,6 +224,7 @@ class OnPolicyRunner:
                           f"""{'Feet h loss:':>{pad}} {locs['mean_feet_h_loss']:.4f}\n"""
                           f"""{'Recons loss:':>{pad}} {locs['mean_recons_loss']:.4f}\n"""
                           f"""{'Kld loss:':>{pad}} {locs['kld_loss']:.4f}\n"""
+                          f"""{'VQ loss:':>{pad}} {locs['mean_vq_loss']:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
                           f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")

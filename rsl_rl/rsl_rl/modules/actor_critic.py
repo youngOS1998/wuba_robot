@@ -47,7 +47,8 @@ class VectorQuantizer(nn.Module):
         
         # 初始化码本
         self.codebook = nn.Embedding(num_embeddings, embedding_dim)
-        self.codebook.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
+        # self.codebook.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
+        self.codebook.weight.data.uniform_(-0.1, 0.1)
     
     def forward(self, inputs):
         # 计算编码与码本距离
@@ -83,7 +84,7 @@ class ActorCritic(nn.Module):
                         activation='elu',
                         init_noise_std=1.0,
                         num_embeddings = 128,
-                        commitment_cost=0.25,
+                        commitment_cost=0.1,
                         **kwargs):
         if kwargs:
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
@@ -203,6 +204,7 @@ class ActorCritic(nn.Module):
         
         # 获取连续编码
         continuous_z = self.encoder_fc(h_flatten)
+        continuous_z = torch.tanh(continuous_z)
 
         # VQ量化
         quantized_z, encoding_indices, vq_loss = self.vq_layer(continuous_z)
@@ -229,6 +231,7 @@ class ActorCritic(nn.Module):
         # vel, mu, log_var = self.encode(noised_hist)
         
         quantized_z, _, vq_loss, vel, body_h, feet_h = self.encode(observation_history)
+        # print('quantized_z', quantized_z)
 
         # 解码器前处理
         # decoder_input = self.decoder_input_fc(quantized_z)
