@@ -36,6 +36,39 @@ from torch.distributions import Normal
 from torch.nn.modules import rnn
 from rsl_rl.modules.vae_estimation import VAEEstimator
 
+
+# 新增VQ量化层实现
+class VectorQuantizer(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.num_embeddings = num_embeddings
+        self.commitment_cost = commitment_cost
+        
+        # 初始化码本
+        self.codebook = nn.Embedding(num_embeddings, embedding_dim)
+        self.codebook.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
+    
+    def forward(self, inputs):
+        # 计算编码与码本距离
+        distances = (torch.sum(inputs**2, dim=1, keepdim=True) 
+                        - 2 * torch.matmul(inputs, self.codebook.weight.t())
+                        + torch.sum(self.codebook.weight**2, dim=1))
+        
+        # 获取最近邻编码索引
+        encoding_indices = torch.argmin(distances, dim=1)
+        quantized = self.codebook(encoding_indices)
+        
+        # 直通梯度估计（关键技巧）
+        quantized = inputs + (quantized - inputs).detach()
+        
+        # 计算VQ专属损失
+        e_latent_loss = torch.mean((quantized.detach() - inputs)**2)
+        q_latent_loss = torch.mean((quantized - inputs.detach())**2)
+        vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
+        
+        return quantized, encoding_indices, vq_loss
+
 class ActorCritic(nn.Module):
     is_recurrent = False
     def __init__(self,  num_actor_obs,
@@ -49,6 +82,8 @@ class ActorCritic(nn.Module):
                         critic_hidden_dims=[256, 256, 256],
                         activation='elu',
                         init_noise_std=1.0,
+                        num_embeddings = 128,
+                        commitment_cost=0.25,
                         **kwargs):
         if kwargs:
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
@@ -56,7 +91,7 @@ class ActorCritic(nn.Module):
 
         activation = get_activation(activation)
 
-        mlp_input_dim_a = num_actor_obs + latent_dim + 1 + 4
+        mlp_input_dim_a = num_actor_obs + latent_dim + 1 + 4 + 3 
         mlp_input_dim_c = num_critic_obs + num_actor_obs
 
         mlp_input_dim_e = num_obs_history
@@ -65,6 +100,15 @@ class ActorCritic(nn.Module):
         # Estimator
         # self.estimator = VAEEstimator(mlp_input_dim_e, encoder_hidden_dims, mlp_output_dim_d, decoder_hidden_dims)
 
+        # 新增VQ-VAE组件
+        self.encoder_fc = nn.Linear(encoder_hidden_dims[-1], latent_dim) 
+
+        # VQ码本 (核心组件)
+        self.vq_layer = VectorQuantizer(num_embeddings, latent_dim, commitment_cost)
+
+        # # 修改解码器输入维度适配VQ
+        # self.decoder_input_fc = nn.Linear(latent_dim, decoder_hidden_dims[0])
+
         # Encoder
         self.enc_input_dim = mlp_input_dim_e
         encoder_layers = []
@@ -72,8 +116,6 @@ class ActorCritic(nn.Module):
         encoder_layers.append(activation)
         for l in range(len(encoder_hidden_dims)):
             if l == len(encoder_hidden_dims) - 1: #map the final hidden layer's output to the parameters (mean and variance) of the latent space distribution
-                self.cv_mu = nn.Linear(encoder_hidden_dims[l], latent_dim - 3)
-                self.cv_var = nn.Linear(encoder_hidden_dims[l], latent_dim - 3)
                 self.cv_vel = nn.Linear(encoder_hidden_dims[l], 3)
                 self.body_height = nn.Linear(encoder_hidden_dims[l], 1)
                 self.feet_height = nn.Linear(encoder_hidden_dims[l], 4)
@@ -156,9 +198,20 @@ class ActorCritic(nn.Module):
     # VAE
     def encode(self, observation_history):
         h = self.encoder_module(observation_history)
-        vel, mu, log_var = self.cv_vel(h), self.cv_mu(h), self.cv_var(h)
-        body_h, feet_h = self.body_height(h), self.feet_height(h)
-        return vel, mu, log_var, body_h, feet_h
+
+        h_flatten = h.view(h.size(0), -1)
+        
+        # 获取连续编码
+        continuous_z = self.encoder_fc(h_flatten)
+
+        # VQ量化
+        quantized_z, encoding_indices, vq_loss = self.vq_layer(continuous_z)
+
+        vel = self.cv_vel(h)
+        body_h = self.body_height(h)
+        feet_h = self.feet_height(h)
+
+        return quantized_z, encoding_indices, vq_loss, vel, body_h, feet_h
 
     def reparameterize(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
@@ -175,11 +228,13 @@ class ActorCritic(nn.Module):
         # noised_hist = observation_history + 2 * eps * observation_history.std(0)
         # vel, mu, log_var = self.encode(noised_hist)
         
-        vel, mu, log_var, body_h, feet_h = self.encode(observation_history)
-        
-        latent = self.reparameterize(mu, log_var)
-        recons = self.decode(torch.cat([vel.detach(), latent], dim=-1))
-        return latent, recons, vel, mu, log_var, body_h, feet_h
+        quantized_z, _, vq_loss, vel, body_h, feet_h = self.encode(observation_history)
+
+        # 解码器前处理
+        # decoder_input = self.decoder_input_fc(quantized_z)
+        recons = self.decoder_module(quantized_z)
+
+        return quantized_z, recons, vq_loss, vel, body_h, feet_h
     
     def net_l2_norm(self, network, mean=False):
         weights = 0
@@ -196,23 +251,23 @@ class ActorCritic(nn.Module):
     # Actor
     def update_distribution(self, observations, observation_history):
         # with torch.no_grad():
-        latent, recons, vae_vel, latent_mu, latent_log_var, body_h, feet_h = self.vae_forward(observation_history)
+        quantized_z, recons, vq_loss, vel, body_h, feet_h = self.vae_forward(observation_history)
         
         # eps = torch.normal(mean=torch.zeros_like(vae_vel, dtype=torch.float32), std=torch.ones_like(vae_vel, dtype=torch.float32)).to(vae_vel.device)
         # noised_vel = vae_vel + (eps * vae_vel.std(0)).detach()
-        mean = self.actor(torch.cat([vae_vel.detach(), body_h.detach(), feet_h.detach(), latent, observations], dim=-1))
+        mean = self.actor(torch.cat([vel.detach(), body_h.detach(), feet_h.detach(), quantized_z.detach(), observations], dim=-1))
         
         # mean = self.actor(torch.cat([vae_vel, latent, observations], dim=-1))
         
         logstd = self.actor_logstd.expand_as(mean)
         std = torch.exp(logstd)
         self.distribution = Normal(mean, std)
-        return latent, recons, vae_vel, latent_mu, latent_log_var, body_h, feet_h
+        return quantized_z, recons, vq_loss, vel, body_h, feet_h
 
     def act(self, observations,observation_history):
-        latent, recons, vae_vel, latent_mu, latent_log_var, body_h, feet_h = self.update_distribution(observations,observation_history)
+        quantized_z, recons, vq_loss, vel, body_h, feet_h = self.update_distribution(observations, observation_history)
         action = self.distribution.sample()                                                                                        
-        return action, latent, recons, vae_vel, latent_mu, latent_log_var, body_h, feet_h
+        return action, quantized_z, recons, vel, body_h, feet_h
     
     def get_actions_log_prob(self, actions):
         return self.distribution.log_prob(actions).sum(dim=-1)

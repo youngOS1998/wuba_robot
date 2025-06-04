@@ -139,6 +139,7 @@ class PPO:
         mean_feet_h_loss = 0
         mean_recons_loss = 0
         mean_kld_loss = 0
+        mean_vq_loss = 0
 
         beta = 1.0
 
@@ -149,7 +150,7 @@ class PPO:
         for obs_batch, next_obs_batch, critic_obs_batch, privileged_obs_batch, base_lin_vel_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
 
-                latent, recons, vae_vel, latent_mu, latent_log_var, body_h, feet_h = self.actor_critic.update_distribution(obs_batch, obs_history_batch)
+                _, recons, vq_loss, vae_vel, body_h, feet_h = self.actor_critic.update_distribution(obs_batch, obs_history_batch)
                 # breakpoint()
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
                 value_batch = self.actor_critic.evaluate(obs_batch, privileged_obs_batch)
@@ -189,15 +190,14 @@ class PPO:
                 else:
                     value_loss = (returns_batch - value_batch).pow(2).mean()
 
-                # Vae Loss
+                # VQ-VAE Loss
                 body_h_real = privileged_obs_batch[:, 11:12].clone()
                 feet_h_real = privileged_obs_batch[:, 3:7].clone()
                 body_h_loss = F.mse_loss(body_h, body_h_real)
                 feet_h_loss = F.mse_loss(feet_h, feet_h_real)
                 body_vel_loss = F.mse_loss(vae_vel, base_lin_vel_batch)
                 recons_loss = F.mse_loss(recons, next_obs_batch)
-                kld_loss = torch.mean(-0.5 * torch.sum(1 + latent_log_var - latent_mu.pow(2) - latent_log_var.exp(), 1), 0)
-                vae_loss = body_vel_loss + recons_loss + beta * kld_loss + body_h_loss + feet_h_loss
+                vae_loss = body_vel_loss + recons_loss + body_h_loss + feet_h_loss + vq_loss
 
                 total_loss = vae_loss + surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
@@ -219,7 +219,8 @@ class PPO:
                 mean_body_h_loss += body_h_loss.item()
                 mean_feet_h_loss += feet_h_loss.item()
                 mean_recons_loss += recons_loss.item()
-                mean_kld_loss += kld_loss.item()
+                mean_kld_loss += kl_mean.item()
+                mean_vq_loss += vq_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
 
@@ -232,6 +233,7 @@ class PPO:
         mean_body_vel_loss /= (num_updates * self.num_vae_module_substeps)
         mean_recons_loss /= (num_updates * self.num_vae_module_substeps)
         mean_kld_loss /= (num_updates * self.num_vae_module_substeps)
+        mean_vq_loss /= (num_updates * self.num_vae_module_substeps)
 
         encoder_l2_norm = self.actor_critic.net_l2_norm(self.actor_critic.encoder_module).item()
         cv_vel_l2_norm = self.actor_critic.net_l2_norm(self.actor_critic.cv_vel).item()
@@ -239,5 +241,5 @@ class PPO:
         self.storage.clear()
 
         return mean_value_loss, mean_surrogate_loss, mean_ratio, mean_entropy, mean_kl, \
-                mean_body_vel_loss, mean_recons_loss, mean_kld_loss, mean_body_h_loss, mean_feet_h_loss, \
+                mean_body_vel_loss, mean_recons_loss, mean_kld_loss, mean_vq_loss, mean_body_h_loss, mean_feet_h_loss, \
                     encoder_l2_norm, cv_vel_l2_norm

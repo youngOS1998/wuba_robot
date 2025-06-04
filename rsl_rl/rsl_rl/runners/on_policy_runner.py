@@ -148,7 +148,7 @@ class OnPolicyRunner:
                 self.alg.compute_returns(obs,privileged_obs)
             
             mean_value_loss, mean_surrogate_loss, mean_ratio, mean_entropy, mean_kl, \
-               mean_body_vel_loss, mean_recons_loss, kld_loss, mean_body_h_loss, mean_feet_h_loss, \
+               mean_body_vel_loss, mean_recons_loss, kld_loss, mean_vq_loss, mean_body_h_loss, mean_feet_h_loss, \
                    encoder_l2_norm, cv_vel_l2_norm = self.alg.update()
             stop = time.time()
             learn_time = stop - start
@@ -194,7 +194,7 @@ class OnPolicyRunner:
         self.writer.add_scalar('Loss/body_h_loss', locs['mean_body_h_loss'], locs['it'])
         self.writer.add_scalar('Loss/feet_h_loss', locs['mean_feet_h_loss'], locs['it'])
         self.writer.add_scalar('Loss/mean_recons_loss', locs['mean_recons_loss'], locs['it'])
-        self.writer.add_scalar('Loss/kld_loss', locs['kld_loss'], locs['it'])
+        self.writer.add_scalar('Loss/vq_loss', locs['mean_vq_loss'], locs['it'])
         
         self.writer.add_scalar('Policy/encoder_l2_norm', locs['encoder_l2_norm'], locs['it'])
         self.writer.add_scalar('Policy/cv_vel_l2_norm', locs['cv_vel_l2_norm'], locs['it'])
