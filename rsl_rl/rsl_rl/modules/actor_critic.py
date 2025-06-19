@@ -39,35 +39,63 @@ from rsl_rl.modules.vae_estimation import VAEEstimator
 
 # 新增VQ量化层实现
 class VectorQuantizer(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, commitment_cost):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost, decay=0.99, eps=1e-5):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
         self.commitment_cost = commitment_cost
-        
-        # 初始化码本
+        self.decay = decay
+        self.eps = eps
+
         self.codebook = nn.Embedding(num_embeddings, embedding_dim)
-        # self.codebook.weight.data.uniform_(-1/num_embeddings, 1/num_embeddings)
         self.codebook.weight.data.uniform_(-0.1, 0.1)
-    
+        self.codebook.weight.requires_grad = False  # EMA不需要梯度
+
+        self.register_buffer('ema_cluster_size', torch.zeros(num_embeddings))
+        self.register_buffer('ema_codebook', self.codebook.weight.data.clone())
+
     def forward(self, inputs):
-        # 计算编码与码本距离
-        distances = (torch.sum(inputs**2, dim=1, keepdim=True) 
-                        - 2 * torch.matmul(inputs, self.codebook.weight.t())
-                        + torch.sum(self.codebook.weight**2, dim=1))
-        
-        # 获取最近邻编码索引
+        # 计算距离
+        flat_inputs = inputs.view(-1, self.embedding_dim)
+        distances = (
+            torch.sum(flat_inputs ** 2, dim=1, keepdim=True)
+            - 2 * torch.matmul(flat_inputs, self.codebook.weight.t())
+            + torch.sum(self.codebook.weight ** 2, dim=1)
+        )
         encoding_indices = torch.argmin(distances, dim=1)
-        quantized = self.codebook(encoding_indices)
-        
-        # 直通梯度估计（关键技巧）
+        encodings = torch.zeros(encoding_indices.size(0), self.num_embeddings, device=inputs.device)
+        encodings.scatter_(1, encoding_indices.unsqueeze(1), 1)
+
+        quantized = torch.matmul(encodings, self.codebook.weight)
+        quantized = quantized.view_as(inputs)
         quantized = inputs + (quantized - inputs).detach()
-        
-        # 计算VQ专属损失
-        e_latent_loss = torch.mean((quantized.detach() - inputs)**2)
-        q_latent_loss = torch.mean((quantized - inputs.detach())**2)
+
+        # VQ Loss
+        e_latent_loss = torch.mean((quantized.detach() - inputs) ** 2)
+        q_latent_loss = torch.mean((quantized - inputs.detach()) ** 2)
         vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
-        
+
+        # EMA更新
+        if self.training:
+            with torch.no_grad():
+                # 统计每个码本被用到的次数
+                cluster_size = encodings.sum(0)
+                # EMA更新
+                self.ema_cluster_size.mul_(self.decay).add_(cluster_size, alpha=1 - self.decay)
+                embed_sum = torch.matmul(encodings.t(), flat_inputs)
+                self.ema_codebook.mul_(self.decay).add_(embed_sum, alpha=1 - self.decay)
+
+                # 归一化
+                n = self.ema_cluster_size.sum()
+                cluster_size = (
+                    (self.ema_cluster_size + self.eps)
+                    / (n + self.num_embeddings * self.eps) * n
+                )
+                # 更新码本
+                self.codebook.weight.data.copy_(
+                    self.ema_codebook / cluster_size.unsqueeze(1)
+                )
+
         return quantized, encoding_indices, vq_loss
 
 class ActorCritic(nn.Module):
@@ -83,7 +111,7 @@ class ActorCritic(nn.Module):
                         critic_hidden_dims=[256, 256, 256],
                         activation='elu',
                         init_noise_std=1.0,
-                        num_embeddings = 128,
+                        num_embeddings = 256,
                         commitment_cost=0.1,
                         **kwargs):
         if kwargs:
@@ -276,12 +304,11 @@ class ActorCritic(nn.Module):
         return self.distribution.log_prob(actions).sum(dim=-1)
 
     def act_inference(self, observations, observation_history):
-        h = self.encoder_module(observation_history)
-        vel, mu = self.cv_vel(h), self.cv_mu(h)
-        body_h, feet_h = self.body_height(h), self.feet_height(h)
-        latent = mu
-        action = self.actor(torch.cat((vel, body_h, feet_h, latent, observations), dim=-1))
-        return action, vel
+        # 编码历史观测，获得VQ-VAE的量化向量和辅助特征
+        quantized_z, encoding_indices, _, vel, body_h, feet_h = self.encode(observation_history)
+        # 拼接特征送入actor
+        action = self.actor(torch.cat((vel, body_h, feet_h, quantized_z, observations), dim=-1))
+        return action, vel, encoding_indices
 
     def evaluate(self, observations,privileged_observations):
         value = self.critic(torch.cat((observations,privileged_observations),dim=-1))

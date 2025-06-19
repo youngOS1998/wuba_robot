@@ -44,11 +44,12 @@ import torch
 import pickle
 import logging
 import time
+import matplotlib.pyplot as plt
 
 def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
 
     # logging 
-    log_name = '/home/byang/Project_byang/wuba_robot/legged_gym/legged_gym/scripts/sim_logs/sim_isaac.log'
+    log_name = '/home/byang/Project/wuba_robot/legged_gym/legged_gym/scripts/sim_logs/sim_isaac.log'
     if os.path.exists(log_name):
         os.remove(log_name)
 
@@ -107,8 +108,8 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
 
     # export policy as a jit module (used to run it from C++)
     path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
-    export_policy_as_jit_actor(ppo_runner.alg.actor_critic, path)
-    export_policy_as_jit_encoder(ppo_runner.alg.actor_critic, path)
+    # export_policy_as_jit_actor(ppo_runner.alg.actor_critic, path)
+    # export_policy_as_jit_encoder(ppo_runner.alg.actor_critic, path)
     # export_policy_as_jit_whole_model(ppo_runner.alg.actor_critic, path)
     print('Exported policy as jit script to: ', path)
 
@@ -121,11 +122,19 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     camera_vel = np.array([0.5, 0, 0.])
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
+    num_embeddings = 256
+    codebook_usage = np.zeros(num_embeddings, dtype=int)
+    codebook_time_seq = []
+    max_episode_length = 8
     
-    for i in range(50*int(env.max_episode_length)):
+    for i in range(50*int(max_episode_length)):
         # breakpoint()
         start_time = time.time()
-        actions, vel = policy(observe['obs'], observe['obs_history'])
+        actions, vel, encoding_indices = policy(observe['obs'], observe['obs_history'])
+        indices_np = encoding_indices.cpu().numpy().flatten()
+        for idx in indices_np:
+            codebook_usage[idx] += 1
+            codebook_time_seq.append(idx)
         # stance_time = env.stance_time.detach().cpu().numpy()
         # air_time = env.air_time.detach().cpu().numpy()
         # stance_time_max = env.stance_time_max.detach().cpu().numpy()
@@ -202,6 +211,40 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
             logger.print_rewards()
         stop_time = time.time()
         # print('policy(HZ): ', 1 / (stop_time - start_time))
+
+    # 循环结束后
+    # plt.figure(figsize=(12, 4))
+    # plt.bar(np.arange(num_embeddings), codebook_usage)
+    # plt.xlabel('Codebook Index')
+    # plt.ylabel('Usage Count')
+    # plt.title('VQ Codebook Usage During Inference')
+    # plt.savefig('codebook_usage_plane.png')
+    # plt.show()
+
+    # plt.figure(figsize=(16, 4))
+    # plt.plot(codebook_time_seq, marker='o', linestyle='-', markersize=2)
+    # plt.xlabel('Time Step')
+    # plt.ylabel('Codebook Index')
+    # plt.title('VQ Codebook Index Usage Over Time')
+    # plt.savefig('codebook_usage_time_seq_plane.png')
+    # plt.show()
+
+    # 统计被用过的码本数量
+    used_codebook_count = np.sum(codebook_usage > 0)
+    # 总码本数量
+    total_codebook_count = len(codebook_usage)
+    # 使用率
+    usage_ratio = used_codebook_count / total_codebook_count
+
+    print(f"码本使用率: {usage_ratio:.2%} ({used_codebook_count}/{total_codebook_count})")
+
+    plt.figure(figsize=(16, 4))
+    plt.scatter(range(len(codebook_time_seq)), codebook_time_seq, s=5)
+    plt.xlabel('Time Step')
+    plt.ylabel('Codebook Index')
+    plt.title('VQ Codebook Index Usage Over Time (Scatter)')
+    plt.savefig('codebook_usage_time_seq_plane_scatter.png')
+    plt.show()
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
