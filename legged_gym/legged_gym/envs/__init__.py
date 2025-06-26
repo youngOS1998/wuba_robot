@@ -41,6 +41,7 @@ from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 from .x20.x20_config import X20RoughCfg, X20RoughCfgPPO
 from .Go1.go1_config import GO1RoughCfg, GO1RoughCfgPPO
 from .Go2.go2_config import GO2RoughCfg, GO2RoughCfgPPO
+from .Quadbyang.quadbyang_config import QuadbyangRoughCfg, QuadbyangRoughCfgPPO
 
 import os
 
@@ -54,3 +55,4 @@ task_registry.register( "cassie", Cassie, CassieRoughCfg(), CassieRoughCfgPPO() 
 task_registry.register( "x20", LeggedRobot, X20RoughCfg(), X20RoughCfgPPO() )
 task_registry.register( "go1", LeggedRobot, GO1RoughCfg(), GO1RoughCfgPPO() )
 task_registry.register( "go2", LeggedRobot, GO2RoughCfg(), GO2RoughCfgPPO() )
+task_registry.register( "quadbyang", LeggedRobot, QuadbyangRoughCfg(), QuadbyangRoughCfgPPO() )
