@@ -106,6 +106,8 @@ class LeggedRobot(BaseTask):
                 self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
         self.post_physics_step()
+        if self.cfg.commands.camera_follow:
+            self.update_camera_follow()
 
         # return clipped obs, clipped states (None), rewards, dones and infos
         clip_obs = self.cfg.normalization.clip_observations
@@ -114,6 +116,30 @@ class LeggedRobot(BaseTask):
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.obs_no_noise_buf, self.privileged_obs_buf, self.rew_constant, self.rew_increase, self.reset_buf, self.extras
+
+    def update_camera_follow(self):
+        """更新相机跟随"""
+        if self.root_states is None:
+            return
+        
+        # 相机相对位置参数
+        horizontal_offset = 3.0
+        vertical_offset = 2.5
+        camera_angle = 15.5
+
+        # 计算相机位置
+        
+        camera_x = self.root_states[:, 0] 
+        camera_y = self.root_states[:, 1] - horizontal_offset
+        camera_z = self.root_states[:, 2] + vertical_offset
+
+        lookat = [self.root_states[:, 0], self.root_states[:, 1], self.root_states[:, 2]]
+
+        # 转换为gymapi坐标
+        cam_pos = gymapi.Vec3(camera_x, camera_y, camera_z)
+        cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
+
+        self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -499,7 +525,8 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
         if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
-            self._push_robots()
+            print('start push robots')
+            self.push_robots()
         if self.cfg.domain_rand.disturbance and (self.common_step_counter % self.cfg.domain_rand.disturbance_interval == 0):
             self._disturbance_robots()
 
@@ -716,7 +743,7 @@ class LeggedRobot(BaseTask):
                                                      gymtorch.unwrap_tensor(self.root_states),
                                                      gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
  
-    def _push_robots(self):
+    def push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
         """
         max_vel = self.cfg.domain_rand.max_push_vel_xy

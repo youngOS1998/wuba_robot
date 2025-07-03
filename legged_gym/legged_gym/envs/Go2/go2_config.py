@@ -89,6 +89,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         heading_command = True # if true: compute ang vel command from heading error
         pacing_offset = False
         height_command = True # if true: compute height command from base height
+        camera_follow = False
 
         class ranges:
             lin_vel_x = [-1.2, 1.2] # min max [m/s]

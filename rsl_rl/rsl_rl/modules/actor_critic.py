@@ -97,6 +97,92 @@ class VectorQuantizer(nn.Module):
                 )
 
         return quantized, encoding_indices, vq_loss
+    
+
+class STDPVectorQuantizer(VectorQuantizer):
+    def __init__(self, num_embeddings, embedding_dim, commitment_cost, 
+                 decay=0.99, eps=1e-5, tau_stdp=10.0, a_plus=0.01, a_minus=0.01, learning_rate=0.01):
+        super().__init__(num_embeddings, embedding_dim, commitment_cost, decay, eps)
+        # STDP参数
+        self.tau_stdp = tau_stdp  # 时间常数
+        self.a_plus = a_plus      # LTP幅度
+        self.a_minus = a_minus    # LTD幅度
+        self.learning_rate = learning_rate  
+        self.online_learning = True
+
+        # 上次激活时间记录
+        self.register_buffer('last_active', torch.zeros(num_embeddings))
+
+    def forward(self, inputs):
+        # 计算距离
+        flat_inputs = inputs.view(-1, self.embedding_dim)
+        distances = (
+            torch.sum(flat_inputs ** 2, dim=1, keepdim=True)
+            - 2 * torch.matmul(flat_inputs, self.codebook.weight.t())
+            + torch.sum(self.codebook.weight ** 2, dim=1)
+        )
+        encoding_indices = torch.argmin(distances, dim=1)
+        encodings = torch.zeros(encoding_indices.size(0), self.num_embeddings, device=inputs.device)
+        encodings.scatter_(1, encoding_indices.unsqueeze(1), 1)
+
+        quantized = torch.matmul(encodings, self.codebook.weight)
+        quantized = quantized.view_as(inputs)
+        quantized = inputs + (quantized - inputs).detach()
+
+        # VQ Loss
+        e_latent_loss = torch.mean((quantized.detach() - inputs) ** 2)
+        q_latent_loss = torch.mean((quantized - inputs.detach()) ** 2)
+        vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
+
+        # EMA更新
+        if self.training or self.online_learning:
+
+            current_time = self.last_active.max() + 1
+            time_diff = current_time - self.last_active[encoding_indices]
+
+            # STDP规则：近期的活跃码本增强
+            stdp_factor = torch.where(
+                time_diff > 0,
+                self.a_plus * torch.exp(-time_diff / self.tau_stdp),
+                -self.a_minus * torch.exp(time_diff / self.tau_stdp)
+            )
+
+            # print(stdp_factor)
+
+            with torch.no_grad():
+
+                # 只更新被使用的码本向量
+                # 先将stdp_factor扩展为4096×1，然后与encodings逐元素相乘
+                weighted_encodings = encodings * stdp_factor.unsqueeze(1)  # 4096×256
+                # 再转置
+                weighted_encodings_t = weighted_encodings.t()  # 256×4096
+                # 再与flat_inputs做矩阵乘法
+                stdp_update = torch.matmul(weighted_encodings_t, flat_inputs)  # 256×19
+                self.codebook.weight.data += self.learning_rate * stdp_update
+
+
+                # 统计每个码本被用到的次数
+                cluster_size = encodings.sum(0)
+                # EMA更新
+                self.ema_cluster_size.mul_(self.decay).add_(cluster_size, alpha=1 - self.decay)
+                embed_sum = torch.matmul(encodings.t(), flat_inputs)
+                self.ema_codebook.mul_(self.decay).add_(embed_sum, alpha=1 - self.decay)
+
+                # 归一化
+                n = self.ema_cluster_size.sum()
+                cluster_size = (
+                    (self.ema_cluster_size + self.eps)
+                    / (n + self.num_embeddings * self.eps) * n
+                )
+                # 更新码本
+                self.codebook.weight.data.copy_(
+                    self.ema_codebook / cluster_size.unsqueeze(1)
+                )
+
+            # 更新时间戳
+            self.last_active[encoding_indices] = current_time
+
+        return quantized, encoding_indices, vq_loss
 
 class ActorCritic(nn.Module):
     is_recurrent = False
@@ -133,6 +219,7 @@ class ActorCritic(nn.Module):
         self.encoder_fc = nn.Linear(encoder_hidden_dims[-1], latent_dim) 
 
         # VQ码本 (核心组件)
+        # self.vq_layer = STDPVectorQuantizer(num_embeddings, latent_dim, commitment_cost)
         self.vq_layer = VectorQuantizer(num_embeddings, latent_dim, commitment_cost)
 
         # # 修改解码器输入维度适配VQ
