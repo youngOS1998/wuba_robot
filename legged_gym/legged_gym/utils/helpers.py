@@ -124,10 +124,10 @@ def get_load_path(root, load_run=-1, checkpoint=-1):
     # load_path = os.path.join(load_run, model)
 
     load_path = '/home/byang/Project_byang/wuba_robot/legged_gym/logs/rough_go2/Apr22_19-05-43_/model_20000.pt'
-    load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_go2/Jun18_19-37-18_/model_20000.pt'          # VQ-VAE
-    # load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_go2/Jun19_13-47-49_/model_16000.pt'
+    # load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_go2/Jun18_19-37-18_/model_20000.pt'          # VQ-VAE
+    load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_go2/Jun19_13-47-49_/model_16000.pt'
     # load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_quadrobot_byang/Jun25_18-03-53_/model_15800.pt'
-    # load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_go2/Jun30_11-47-41_/model_20000.pt'   # STDP_VQ-VAE
+    load_path = '/home/byang/Project/wuba_robot/legged_gym/logs/rough_go2/Jun30_11-47-41_/model_20000.pt'   # STDP_VQ-VAE
     return load_path
 
 def update_cfg_from_args(env_cfg, cfg_train, args):
@@ -164,7 +164,7 @@ def get_args():
         {"name": "--load_run", "type": str,  "help": "Name of the run to load when resume=True. If -1: will load the last run. Overrides config file if provided."},
         {"name": "--checkpoint", "type": int,  "help": "Saved model checkpoint number. If -1: will load the last checkpoint. Overrides config file if provided."},
         
-        {"name": "--headless", "action": "store_true", "default": False, "help": "Force display off at all times"},
+        {"name": "--headless", "action": "store_true", "default": True, "help": "Force display off at all times"},
         {"name": "--horovod", "action": "store_true", "default": False, "help": "Use horovod for multi-gpu training"},
         {"name": "--rl_device", "type": str, "default": "cuda:0", "help": 'Device used by the RL algorithm, (cpu, gpu, cuda:0, cuda:1 etc..)'},
         {"name": "--num_envs", "type": int, "help": "Number of environments to create. Overrides config file if provided."},

@@ -219,8 +219,8 @@ class ActorCritic(nn.Module):
         self.encoder_fc = nn.Linear(encoder_hidden_dims[-1], latent_dim) 
 
         # VQ码本 (核心组件)
-        # self.vq_layer = STDPVectorQuantizer(num_embeddings, latent_dim, commitment_cost)
-        self.vq_layer = VectorQuantizer(num_embeddings, latent_dim, commitment_cost)
+        self.vq_layer = STDPVectorQuantizer(num_embeddings, latent_dim, commitment_cost)
+        # self.vq_layer = VectorQuantizer(num_embeddings, latent_dim, commitment_cost)
 
         # # 修改解码器输入维度适配VQ
         # self.decoder_input_fc = nn.Linear(latent_dim, decoder_hidden_dims[0])

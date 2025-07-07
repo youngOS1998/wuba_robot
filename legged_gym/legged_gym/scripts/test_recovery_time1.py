@@ -82,7 +82,7 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.env.num_envs = 1
     env_cfg.terrain.num_rows = 1
     env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.mesh_type = "plane"
+    env_cfg.terrain.mesh_type = "trimesh"
     env_cfg.terrain.curriculum = False
     env_cfg.terrain.center_robots = True
     env_cfg.noise.add_noise = False
@@ -99,6 +99,7 @@ def play(args, x_vel=2.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.y_command = 0.0
     env_cfg.yaw_command = 0.0
     env_cfg.commands.camera_follow = True
+    env_cfg.terrain.terrain_proportions = [0., 1.0, 0., 0., 0.]
     
     # env_cfg.sim_params = "cuda:0"
 
