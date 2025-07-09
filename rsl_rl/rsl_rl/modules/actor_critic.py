@@ -112,8 +112,27 @@ class STDPVectorQuantizer(VectorQuantizer):
 
         # 上次激活时间记录
         self.register_buffer('last_active', torch.zeros(num_embeddings))
+        self.register_buffer('last_active_time', torch.zeros(num_embeddings) - 1e6)
+        self.register_buffer('current_wall_time', torch.tensor(0.0))
+        self.time_scale = 1.0   # 时间缩放因子
 
-    def forward(self, inputs):
+        # 奖励调制参数
+        self.reward_decay = 0.95
+        self.register_buffer('code_rewards', torch.zeros(num_embeddings))   # 码本奖励累积
+
+        # 多尺度时间常数
+        self.tau_scales = {
+            'fast': 0.1,    # 100ms关节级
+            'medium': 1.0,  # 1s步态级
+            'slow': 10.0    # 10s策略级
+        }
+
+
+    def forward(self, inputs, rewards=None, time_delta=None):
+
+        if time_delta is not None:
+            self.current_wall_time += time_delta
+
         # 计算距离
         flat_inputs = inputs.view(-1, self.embedding_dim)
         distances = (
@@ -137,32 +156,63 @@ class STDPVectorQuantizer(VectorQuantizer):
         # EMA更新
         if self.training or self.online_learning:
 
-            current_time = self.last_active.max() + 1
-            time_diff = current_time - self.last_active[encoding_indices]
-
-            # STDP规则：近期的活跃码本增强
-            stdp_factor = torch.where(
-                time_diff > 0,
-                self.a_plus * torch.exp(-time_diff / self.tau_stdp),
-                -self.a_minus * torch.exp(time_diff / self.tau_stdp)
-            )
-
-            # print(stdp_factor)
-
             with torch.no_grad():
+                # 更新时间差计算 （使用真实时间）
+                time_diff = self.current_wall_time - self.last_active_time[encoding_indices]
 
-                # 只更新被使用的码本向量
-                # 先将stdp_factor扩展为4096×1，然后与encodings逐元素相乘
-                weighted_encodings = encodings * stdp_factor.unsqueeze(1)  # 4096×256
-                # 再转置
-                weighted_encodings_t = weighted_encodings.t()  # 256×4096
-                # 再与flat_inputs做矩阵乘法
-                stdp_update = torch.matmul(weighted_encodings_t, flat_inputs)  # 256×19
-                self.codebook.weight.data += self.learning_rate * stdp_update
+                # ======= 奖励调制STDP ======
+                if rewards is not None:
+                    # 更新码本奖励积累
+                    active_codes = encoding_indices.unique()
+                    for code_idx in active_codes:
+                        mask = (encoding_indices == code_idx)
+                        code_reward = rewards[mask].mean()
+                        self.code_rewards[code_idx] = (
+                            self.reward_decay * self.code_rewards[code_idx] +
+                            (1 - self.reward_decay) * code_reward
+                        )
 
+                # 多尺度STDP因子
+                stdp_factors = {}
+                for scale_name, scale_factor in self.tau_scales.items():
+                    tau = self.tau_stdp * scale_factor
+                    factor = torch.where(
+                        time_diff > 0,
+                        self.a_plus * torch.exp(-time_diff / tau),
+                        -self.a_minus * torch.exp(time_diff / tau)
+                    )
 
-                # 统计每个码本被用到的次数
+                    # 奖励调制
+                    if rewards is not None:
+                        reward_factor = torch.sigmoid(5 * self.code_rewards[encoding_indices])
+                        factor *= reward_factor
+                    
+                    stdp_factors[scale_name] = factor
+
+                # 使用中尺度作为基础更新
+                stdp_factor = stdp_factors['medium']
+
+                # ====== 执行STDP更新 =====
+                # 只更新被使用的的码本向量
                 cluster_size = encodings.sum(0)
+                activated = cluster_size > 0
+
+                if torch.any(activated):
+                    # 计算每个码本的平均输入
+                    cluster_sum = torch.matmul(encodings.t(), flat_inputs)
+                    cluster_avg = cluster_sum / (cluster_size.unsqueeze(1) + self.eps)
+
+                    # STDP增强更新
+                    for j in torch.where(activated)[0]:
+                        update_direction = cluster_avg[j] - self.codebook.weight.data[j]
+                        self.codebook.weight.data[j] += (
+                            self.learning_rate * stdp_factor[j] * update_direction
+                        )
+                    
+                # ==== 更新时间戳 ====
+                self.last_active_time[encoding_indices] = self.current_wall_time
+
+
                 # EMA更新
                 self.ema_cluster_size.mul_(self.decay).add_(cluster_size, alpha=1 - self.decay)
                 embed_sum = torch.matmul(encodings.t(), flat_inputs)
@@ -179,8 +229,6 @@ class STDPVectorQuantizer(VectorQuantizer):
                     self.ema_codebook / cluster_size.unsqueeze(1)
                 )
 
-            # 更新时间戳
-            self.last_active[encoding_indices] = current_time
 
         return quantized, encoding_indices, vq_loss
 
@@ -312,7 +360,7 @@ class ActorCritic(nn.Module):
         return self.distribution.entropy().sum(dim=-1)
     
     # VAE
-    def encode(self, observation_history):
+    def encode(self, observation_history, rewards=None, time_delta=None):
         h = self.encoder_module(observation_history)
 
         h_flatten = h.view(h.size(0), -1)
@@ -322,7 +370,11 @@ class ActorCritic(nn.Module):
         continuous_z = torch.tanh(continuous_z)
 
         # VQ量化
-        quantized_z, encoding_indices, vq_loss = self.vq_layer(continuous_z)
+        quantized_z, encoding_indices, vq_loss = self.vq_layer(
+            continuous_z,
+            rewards=rewards,
+            time_delta=time_delta
+            )
 
         vel = self.cv_vel(h)
         body_h = self.body_height(h)
@@ -339,13 +391,17 @@ class ActorCritic(nn.Module):
         return self.decoder_module(latent)
     
     # define forward function for only the vae
-    def vae_forward(self, observation_history):
+    def vae_forward(self, observation_history, rewards=None, time_delta=None):
         # eps = torch.normal(mean=torch.zeros_like(observation_history, dtype=torch.float32), 
         #                    std=torch.ones_like(observation_history, dtype=torch.float32)).to(observation_history.device)
         # noised_hist = observation_history + 2 * eps * observation_history.std(0)
         # vel, mu, log_var = self.encode(noised_hist)
         
-        quantized_z, _, vq_loss, vel, body_h, feet_h = self.encode(observation_history)
+        quantized_z, _, vq_loss, vel, body_h, feet_h = self.encode(
+            observation_history,
+            rewards=rewards,
+            time_delta=time_delta
+            )
         # print('quantized_z', quantized_z)
 
         # 解码器前处理
@@ -367,9 +423,13 @@ class ActorCritic(nn.Module):
         return weights
 
     # Actor
-    def update_distribution(self, observations, observation_history):
+    def update_distribution(self, observations, observation_history, rewards=None, time_delta=None):
         # with torch.no_grad():
-        quantized_z, recons, vq_loss, vel, body_h, feet_h = self.vae_forward(observation_history)
+        quantized_z, recons, vq_loss, vel, body_h, feet_h = self.vae_forward(
+            observation_history,
+            rewards=rewards,
+            time_delta=time_delta
+            )
         
         # eps = torch.normal(mean=torch.zeros_like(vae_vel, dtype=torch.float32), std=torch.ones_like(vae_vel, dtype=torch.float32)).to(vae_vel.device)
         # noised_vel = vae_vel + (eps * vae_vel.std(0)).detach()
@@ -382,8 +442,13 @@ class ActorCritic(nn.Module):
         self.distribution = Normal(mean, std)
         return quantized_z, recons, vq_loss, vel, body_h, feet_h
 
-    def act(self, observations,observation_history):
-        quantized_z, recons, vq_loss, vel, body_h, feet_h = self.update_distribution(observations, observation_history)
+    def act(self, observations, observation_history, rewards=None, time_delta=None):
+        quantized_z, recons, vq_loss, vel, body_h, feet_h = self.update_distribution(
+            observations, 
+            observation_history,
+            rewards=rewards,
+            time_delta=time_delta
+            )
         action = self.distribution.sample()                                                                                        
         return action, quantized_z, recons, vel, body_h, feet_h
     
@@ -397,7 +462,7 @@ class ActorCritic(nn.Module):
         action = self.actor(torch.cat((vel, body_h, feet_h, quantized_z, observations), dim=-1))
         return action, vel, encoding_indices
 
-    def evaluate(self, observations,privileged_observations):
+    def evaluate(self, observations, privileged_observations):
         value = self.critic(torch.cat((observations,privileged_observations),dim=-1))
         return value
 

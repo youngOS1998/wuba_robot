@@ -167,6 +167,7 @@ class RolloutStorage:
         obs_history = self.observation_histories.flatten(0, 1)
 
         actions = self.actions.flatten(0, 1)
+        rewards = self.rewards.flatten(0, 1)
         values = self.values.flatten(0, 1)
         returns = self.returns.flatten(0, 1)
         old_actions_log_prob = self.actions_log_prob.flatten(0, 1)
@@ -190,13 +191,15 @@ class RolloutStorage:
                 obs_history_batch = obs_history[batch_idx]
 
                 actions_batch = actions[batch_idx]
+                rewards_batch = rewards[batch_idx]
                 target_values_batch = values[batch_idx]
                 returns_batch = returns[batch_idx]
                 old_actions_log_prob_batch = old_actions_log_prob[batch_idx]
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
-                yield obs_batch, next_obs_batch, critic_observations_batch, privileged_obs_batch, base_lin_vel_batch, obs_history_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                yield obs_batch, next_obs_batch, critic_observations_batch, privileged_obs_batch, base_lin_vel_batch, \
+                    obs_history_batch, actions_batch, rewards_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
 
     # for RNNs only
